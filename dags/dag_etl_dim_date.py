@@ -1,12 +1,12 @@
 """
-dag_etl_customers.py
+dag_etl_dim_date.py
 =====================
-ETL pipeline: customers.csv → stg_customers → dim_customers
+ETL pipeline: dim_date.csv → stg_dim_date → dim_dim_date
 
 Task flow:
-    create_tables  (SQLExecuteQueryOperator) : DDL stg_customers & dim_customers
-    extract_load   (@task Python)            : baca CSV → stg_customers
-    transform      (SQLExecuteQueryOperator) : stg_customers → dim_customers
+    create_tables  (SQLExecuteQueryOperator) : DDL stg_dim_date & dim_dim_date
+    extract_load   (@task Python)            : baca CSV → stg_dim_date
+    transform      (SQLExecuteQueryOperator) : stg_dim_date → dim_dim_date
 
 Airflow Connection:
     conn_id = "postgres_etl"  (tipe: Postgres)
@@ -25,58 +25,54 @@ from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 # ─── Konstanta ────────────────────────────────────────────────────────────────
 CONN_ID     = "postgres_etl_tiansi" # <-- ganti dengan koneksi database yang sudah dibuat di airflow
 SOURCE_FILE = os.path.join(
-    os.path.dirname(__file__), "..", "include", "dataset", "customers.csv"
+    os.path.dirname(__file__), "..", "include", "dataset", "dim_date.csv"
 )
 
 DDL_STATEMENTS = """
-CREATE TABLE IF NOT EXISTS stg_customers (
-    customer_id       INTEGER,
-    customer_code     VARCHAR(20),
-    full_name         VARCHAR(150),
-    gender            VARCHAR(5),
-    birth_date        VARCHAR(20),
-    email             VARCHAR(150),
-    phone             VARCHAR(20),
-    segment           VARCHAR(20),
-    job_segment       VARCHAR(100),
-    city              VARCHAR(100),
-    province          VARCHAR(100),
-    registration_date VARCHAR(20),
-    branch_id         INTEGER,
-    is_active         VARCHAR(10),
-    credit_score      SMALLINT,
-    estimated_salary  NUMERIC(18,2)
+-- =========================================================================
+-- 1. STAGING TABLE (Menampung data mentah, tanggal & boolean menggunakan VARCHAR)
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS stg_dates (
+    date_id       INTEGER,
+    full_date     VARCHAR(20),
+    year          INTEGER,
+    quarter       SMALLINT,
+    month         SMALLINT,
+    month_name    VARCHAR(20),
+    week_of_year  SMALLINT,
+    day_of_month  SMALLINT,
+    day_of_week   SMALLINT,
+    day_name      VARCHAR(20),
+    is_weekend    VARCHAR(10), -- Menerima teks mentah 'True'/'False'
+    is_holiday    VARCHAR(10)  -- Menerima teks mentah 'True'/'False'
 );
 
-CREATE TABLE IF NOT EXISTS dim_customers (
-    customer_id          INTEGER       PRIMARY KEY,
-    customer_code        VARCHAR(20),
-    full_name            VARCHAR(150),
-    gender               VARCHAR(5),
-    birth_date           DATE,
-    email                VARCHAR(150),
-    phone                VARCHAR(20),
-    segment              VARCHAR(20),
-    job_segment          VARCHAR(100),
-    city                 VARCHAR(100),
-    province             VARCHAR(100),
-    registration_date    DATE,
-    branch_id            INTEGER,
-    is_active            BOOLEAN,
-    credit_score         SMALLINT,
-    estimated_salary     NUMERIC(18,2),
-    age                  SMALLINT,
-    credit_score_segment VARCHAR(20),
-    salary_segment       VARCHAR(20),
-    etl_loaded_at        TIMESTAMP     DEFAULT NOW()
+-- =========================================================================
+-- 2. DIMENSION TABLE (Data bersih, tipe data sesuai, + kolom transformasi)
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS dim_dates (
+    date_id       INTEGER      PRIMARY KEY, -- Contoh: 20230101
+    full_date     DATE,                     -- Diubah menjadi tipe DATE asli
+    year          INTEGER,
+    quarter       SMALLINT,
+    month         SMALLINT,
+    month_name    VARCHAR(20),
+    week_of_year  SMALLINT,
+    day_of_month  SMALLINT,
+    day_of_week   SMALLINT,
+    day_name      VARCHAR(20),
+    is_weekend    BOOLEAN,                  -- Ditransformasikan menjadi BOOLEAN asli
+    is_holiday    BOOLEAN,                  -- Ditransformasikan menjadi BOOLEAN asli
+    -- Kolom Transformasi Tambahan (Mengikuti pola struktur referensimu)
+    etl_loaded_at TIMESTAMP    DEFAULT NOW()
 );
 """
 
 
 # ─── DAG ──────────────────────────────────────────────────────────────────────
 @dag(
-    dag_id              = "dag_etl_customers",
-    description         = "ETL customers.csv → stg_customers → dim_customers",
+    dag_id              = "dag_etl_dim_date",
+    description         = "ETL dim_date.csv → stg_dates → dim_dates",
     default_args        = {
         "owner"           : "airflow",
         "retries"         : 1,
@@ -86,10 +82,10 @@ CREATE TABLE IF NOT EXISTS dim_customers (
     start_date          = datetime(2025, 1, 1),
     schedule            = None,
     catchup             = False,
-    tags                = ["etl", "customers", "dim", "postgresql"],
-    template_searchpath = ["/opt/airflow/include/sql/customers"],
+    tags                = ["etl", "dim_date", "dim", "postgresql"],
+    template_searchpath = ["/opt/airflow/include/sql/dim_date"],
 )
-def dag_etl_customers():
+def dag_etl_dim_date():
 
     # ── Task 1: DDL ───────────────────────────────────────────────────────────
     create_tables = SQLExecuteQueryOperator(
@@ -98,7 +94,7 @@ def dag_etl_customers():
         sql     = DDL_STATEMENTS,
     )
 
-    # ── Task 2: Extract CSV → stg_customers ──────────────────────────────────
+    # ── Task 2: Extract CSV → stg_dim_date ──────────────────────────────────
     @task()
     def extract_load():
         from airflow.hooks.base import BaseHook
@@ -113,11 +109,11 @@ def dag_etl_customers():
         df = pd.read_csv(SOURCE_FILE)
 
         with engine.connect() as c:
-            c.execute(text("TRUNCATE TABLE stg_customers"))
+            c.execute(text("TRUNCATE TABLE stg_dates"))
             c.commit()
 
         df.to_sql(
-            name      = "stg_customers",
+            name      = "stg_dates",
             con       = engine,
             if_exists = "append",
             index     = False,
@@ -127,7 +123,7 @@ def dag_etl_customers():
         engine.dispose()
         return len(df)
 
-    # ── Task 3: Transform stg_customers → dim_customers ──────────────────────
+    # ── Task 3: Transform stg_dates → dimdates ──────────────────────
     transform = SQLExecuteQueryOperator(
         task_id = "transform",
         conn_id = CONN_ID,
@@ -138,4 +134,4 @@ def dag_etl_customers():
     create_tables >> extract_load() >> transform
 
 
-dag_etl_customers()
+dag_etl_dim_date()

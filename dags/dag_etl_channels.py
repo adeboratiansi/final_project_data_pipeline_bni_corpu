@@ -1,12 +1,12 @@
 """
-dag_etl_customers.py
+dag_etl_channels.py
 =====================
-ETL pipeline: customers.csv → stg_customers → dim_customers
+ETL pipeline: channels.csv → stg_channels → dim_channels
 
 Task flow:
-    create_tables  (SQLExecuteQueryOperator) : DDL stg_customers & dim_customers
-    extract_load   (@task Python)            : baca CSV → stg_customers
-    transform      (SQLExecuteQueryOperator) : stg_customers → dim_customers
+    create_tables  (SQLExecuteQueryOperator) : DDL stg_channels & dim_channels
+    extract_load   (@task Python)            : baca CSV → stg_channels
+    transform      (SQLExecuteQueryOperator) : stg_channels → dim_channels
 
 Airflow Connection:
     conn_id = "postgres_etl"  (tipe: Postgres)
@@ -25,58 +25,42 @@ from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 # ─── Konstanta ────────────────────────────────────────────────────────────────
 CONN_ID     = "postgres_etl_tiansi" # <-- ganti dengan koneksi database yang sudah dibuat di airflow
 SOURCE_FILE = os.path.join(
-    os.path.dirname(__file__), "..", "include", "dataset", "customers.csv"
+    os.path.dirname(__file__), "..", "include", "dataset", "channels.csv"
 )
 
 DDL_STATEMENTS = """
-CREATE TABLE IF NOT EXISTS stg_customers (
-    customer_id       INTEGER,
-    customer_code     VARCHAR(20),
-    full_name         VARCHAR(150),
-    gender            VARCHAR(5),
-    birth_date        VARCHAR(20),
-    email             VARCHAR(150),
-    phone             VARCHAR(20),
-    segment           VARCHAR(20),
-    job_segment       VARCHAR(100),
-    city              VARCHAR(100),
-    province          VARCHAR(100),
-    registration_date VARCHAR(20),
-    branch_id         INTEGER,
-    is_active         VARCHAR(10),
-    credit_score      SMALLINT,
-    estimated_salary  NUMERIC(18,2)
+-- =========================================================================
+-- 1. STAGING TABLE (Menampung data mentah, tipe is_digital menggunakan VARCHAR)
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS stg_channels (
+    channel_id       INTEGER,
+    channel_code     VARCHAR(20),
+    channel_name     VARCHAR(100),
+    channel_category VARCHAR(50),
+    is_digital       VARCHAR(10), -- Menggunakan VARCHAR untuk menampung teks mentah 'True'/'False'
+    description      VARCHAR(255)
 );
 
-CREATE TABLE IF NOT EXISTS dim_customers (
-    customer_id          INTEGER       PRIMARY KEY,
-    customer_code        VARCHAR(20),
-    full_name            VARCHAR(150),
-    gender               VARCHAR(5),
-    birth_date           DATE,
-    email                VARCHAR(150),
-    phone                VARCHAR(20),
-    segment              VARCHAR(20),
-    job_segment          VARCHAR(100),
-    city                 VARCHAR(100),
-    province             VARCHAR(100),
-    registration_date    DATE,
-    branch_id            INTEGER,
-    is_active            BOOLEAN,
-    credit_score         SMALLINT,
-    estimated_salary     NUMERIC(18,2),
-    age                  SMALLINT,
-    credit_score_segment VARCHAR(20),
-    salary_segment       VARCHAR(20),
-    etl_loaded_at        TIMESTAMP     DEFAULT NOW()
+-- =========================================================================
+-- 2. DIMENSION TABLE (Data bersih, tipe data sesuai, + kolom transformasi)
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS dim_channels (
+    channel_id       INTEGER      PRIMARY KEY,
+    channel_code     VARCHAR(20),
+    channel_name     VARCHAR(100),
+    channel_category VARCHAR(50),
+    is_digital       BOOLEAN,     -- Ditransformasikan menjadi tipe data BOOLEAN asli
+    description      VARCHAR(255),
+    -- Kolom Transformasi Tambahan (Mengikuti pola struktur referensimu)
+    etl_loaded_at    TIMESTAMP    DEFAULT NOW()
 );
 """
 
 
 # ─── DAG ──────────────────────────────────────────────────────────────────────
 @dag(
-    dag_id              = "dag_etl_customers",
-    description         = "ETL customers.csv → stg_customers → dim_customers",
+    dag_id              = "dag_etl_channels",
+    description         = "ETL channels.csv → stg_channels → dim_channels",
     default_args        = {
         "owner"           : "airflow",
         "retries"         : 1,
@@ -86,10 +70,10 @@ CREATE TABLE IF NOT EXISTS dim_customers (
     start_date          = datetime(2025, 1, 1),
     schedule            = None,
     catchup             = False,
-    tags                = ["etl", "customers", "dim", "postgresql"],
-    template_searchpath = ["/opt/airflow/include/sql/customers"],
+    tags                = ["etl", "channels", "dim", "postgresql"],
+    template_searchpath = ["/opt/airflow/include/sql/channels"],
 )
-def dag_etl_customers():
+def dag_etl_channels():
 
     # ── Task 1: DDL ───────────────────────────────────────────────────────────
     create_tables = SQLExecuteQueryOperator(
@@ -98,7 +82,7 @@ def dag_etl_customers():
         sql     = DDL_STATEMENTS,
     )
 
-    # ── Task 2: Extract CSV → stg_customers ──────────────────────────────────
+    # ── Task 2: Extract CSV → stg_channels ──────────────────────────────────
     @task()
     def extract_load():
         from airflow.hooks.base import BaseHook
@@ -113,11 +97,11 @@ def dag_etl_customers():
         df = pd.read_csv(SOURCE_FILE)
 
         with engine.connect() as c:
-            c.execute(text("TRUNCATE TABLE stg_customers"))
+            c.execute(text("TRUNCATE TABLE stg_channels"))
             c.commit()
 
         df.to_sql(
-            name      = "stg_customers",
+            name      = "stg_channels",
             con       = engine,
             if_exists = "append",
             index     = False,
@@ -127,7 +111,7 @@ def dag_etl_customers():
         engine.dispose()
         return len(df)
 
-    # ── Task 3: Transform stg_customers → dim_customers ──────────────────────
+    # ── Task 3: Transform stg_channels → dim_channels ──────────────────────
     transform = SQLExecuteQueryOperator(
         task_id = "transform",
         conn_id = CONN_ID,
@@ -138,4 +122,4 @@ def dag_etl_customers():
     create_tables >> extract_load() >> transform
 
 
-dag_etl_customers()
+dag_etl_channels()
