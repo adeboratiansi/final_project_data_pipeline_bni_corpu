@@ -18,13 +18,12 @@ Analisis volume dan nilai total transaksi secara berkala (harian, mingguan, dan 
 ### 2. Customer 360
 Identifikasi nasabah paling aktif berdasarkan frekuensi dan nilai transaksi, serta analisis distribusi profil nasabah per segmen (Retail, Priority, VIP).
 - **Nasabah Paling Aktif (Frekuensi & Nilai Transaksi)**
-  <img width="1880" height="540" alt="image" src="https://github.com/user-attachments/assets/8742291e-266e-4400-a496-3973f0577ee9" />
+  <img width="1880" height="540" alt="image" src="https://github.com/user-attachments/assets/8742291e-266e-4fc0-a496-3973f0577ee9" />
 
 - **Distribusi Nasabah per Segmen**
   <img width="1736" height="195" alt="image" src="https://github.com/user-attachments/assets/5e4df158-e35f-4c6a-8166-7b62d9b1c5c4" />
 
 🔗 [Lihat SQL Query](https://github.com/adeboratiansi/final_project_data_pipeline_bni_corpu/blob/main/sql_answer/customer_360.sql)
-
 ---
 
 ### 3. Branch Performance
